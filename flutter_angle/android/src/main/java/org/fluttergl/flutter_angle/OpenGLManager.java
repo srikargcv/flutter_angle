@@ -156,20 +156,26 @@ public final class OpenGLManager  {
     EGLConfig[] configs = new EGLConfig[1];
     int[] configSpec = getConfigAttributes();
 
-    if (!egl.eglChooseConfig(eglDisplay, configSpec, configs, 1, configsCount)) {
+    // Slop fork: try the strict config, then fall back to a relaxed one
+    // (no stencil, 16-bit depth) for drivers that reject the combo.
+    boolean chosen = egl.eglChooseConfig(eglDisplay, configSpec, configs, 1, configsCount);
+    if (chosen && configsCount[0] <= 0) {
+      chosen = egl.eglChooseConfig(eglDisplay, getConfigAttributesFallback(), configs, 1, configsCount);
+    }
+    if (!chosen || configsCount[0] <= 0) {
       error = "Failed to choose config: " + GLUtils.getEGLErrorString(egl.eglGetError());
       return null;
-    } else if (configsCount[0] > 0) {
-      int valA[] = new int[1];
-      egl.eglGetConfigAttrib(eglDisplay, configs[0], EGL10.EGL_CONFIG_ID, valA);
-      configId = valA[0];
-      return configs[0];
     }
-
-    return null;
+    int valA[] = new int[1];
+    egl.eglGetConfigAttrib(eglDisplay, configs[0], EGL10.EGL_CONFIG_ID, valA);
+    configId = valA[0];
+    return configs[0];
   }
 
   private int[] getConfigAttributes() {
+    // Slop fork: try the full-featured config first, then fall back through
+    // relaxed configs for drivers (e.g. some OnePlus/OxygenOS Adreno builds)
+    // that fail eglChooseConfig with ES3 + stencil8 + depth24.
     return new int[]{
       EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
       EGL10.EGL_RED_SIZE, 8,
@@ -178,6 +184,19 @@ public final class OpenGLManager  {
       EGL10.EGL_ALPHA_SIZE, 8,
       EGL10.EGL_DEPTH_SIZE, 24,
       EGL10.EGL_STENCIL_SIZE, 8,
+      EGL10.EGL_NONE
+    };
+  }
+
+  private int[] getConfigAttributesFallback() {
+    return new int[]{
+      EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+      EGL10.EGL_RED_SIZE, 8,
+      EGL10.EGL_GREEN_SIZE, 8,
+      EGL10.EGL_BLUE_SIZE, 8,
+      EGL10.EGL_ALPHA_SIZE, 8,
+      EGL10.EGL_DEPTH_SIZE, 16,
+      EGL10.EGL_STENCIL_SIZE, 0,
       EGL10.EGL_NONE
     };
   }
