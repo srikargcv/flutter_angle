@@ -167,7 +167,8 @@ public final class OpenGLManager  {
           && configsCount[0] > 0;
     }
     if (!chosen) {
-      error = "Failed to choose config: " + GLUtils.getEGLErrorString(egl.eglGetError());
+      error = "Failed to choose config: " + GLUtils.getEGLErrorString(egl.eglGetError())
+          + " | available: " + dumpConfigs(egl, eglDisplay);
       return null;
     }
     int valA[] = new int[1];
@@ -190,6 +191,41 @@ public final class OpenGLManager  {
       EGL10.EGL_STENCIL_SIZE, 8,
       EGL10.EGL_NONE
     };
+  }
+
+  // Slop fork diagnostic: enumerate what the device actually offers so the
+  // error message can drive config selection instead of guessing.
+  private String dumpConfigs(EGL10 egl, EGLDisplay display) {
+    try {
+      int[] num = new int[1];
+      if (!egl.eglGetConfigs(display, null, 0, num) || num[0] <= 0) return "none";
+      int cap = Math.min(num[0], 32);
+      EGLConfig[] all = new EGLConfig[cap];
+      int[] got = new int[1];
+      if (!egl.eglGetConfigs(display, all, cap, got) || got[0] <= 0) return "none";
+      StringBuilder sb = new StringBuilder();
+      int[] v = new int[1];
+      for (int i = 0; i < got[0]; i++) {
+        int rt = attr(egl, display, all[i], EGL10.EGL_RENDERABLE_TYPE, v);
+        int r = attr(egl, display, all[i], EGL10.EGL_RED_SIZE, v);
+        int g = attr(egl, display, all[i], EGL10.EGL_GREEN_SIZE, v);
+        int b = attr(egl, display, all[i], EGL10.EGL_BLUE_SIZE, v);
+        int a = attr(egl, display, all[i], EGL10.EGL_ALPHA_SIZE, v);
+        int d = attr(egl, display, all[i], EGL10.EGL_DEPTH_SIZE, v);
+        int st = attr(egl, display, all[i], EGL10.EGL_STENCIL_SIZE, v);
+        sb.append('[').append(rt).append(':').append(r).append(g).append(b).append(a)
+          .append('d').append(d).append('s').append(st).append(']');
+      }
+      return sb.toString();
+    } catch (Exception e) {
+      return "unavailable(" + e.getMessage() + ")";
+    }
+  }
+
+  private int attr(EGL10 egl, EGLDisplay display, EGLConfig c, int attrib, int[] v) {
+    v[0] = -1;
+    egl.eglGetConfigAttrib(display, c, attrib, v);
+    return v[0];
   }
 
   private int[] getConfigAttributesFallback() {
