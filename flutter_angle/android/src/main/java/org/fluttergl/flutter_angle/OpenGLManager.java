@@ -157,12 +157,16 @@ public final class OpenGLManager  {
     int[] configSpec = getConfigAttributes();
 
     // Slop fork: try the strict config, then fall back to a relaxed one
-    // (no stencil, 16-bit depth) for drivers that reject the combo.
-    boolean chosen = egl.eglChooseConfig(eglDisplay, configSpec, configs, 1, configsCount);
-    if (chosen && configsCount[0] <= 0) {
-      chosen = egl.eglChooseConfig(eglDisplay, getConfigAttributesFallback(), configs, 1, configsCount);
+    // (no stencil, 16-bit depth) whenever the strict attempt either errors
+    // or matches no config — several Android drivers reject the combo.
+    boolean chosen = egl.eglChooseConfig(eglDisplay, configSpec, configs, 1, configsCount)
+        && configsCount[0] > 0;
+    if (!chosen) {
+      configsCount[0] = 0;
+      chosen = egl.eglChooseConfig(eglDisplay, getConfigAttributesFallback(), configs, 1, configsCount)
+          && configsCount[0] > 0;
     }
-    if (!chosen || configsCount[0] <= 0) {
+    if (!chosen) {
       error = "Failed to choose config: " + GLUtils.getEGLErrorString(egl.eglGetError());
       return null;
     }
